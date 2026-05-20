@@ -1,8 +1,4 @@
-extern crate etherparse;
-extern crate serial_test;
-extern crate tun_tap;
-
-use etherparse::{IpHeader, PacketBuilder, PacketHeaders, TransportHeader};
+use etherparse::{NetHeaders, PacketBuilder, PacketHeaders, TransportHeader};
 use serial_test::serial;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use tun_tap::{Iface, Mode};
@@ -22,7 +18,7 @@ fn it_sents_packets() {
     assert_eq!(num, 38);
     let packet = &buf[..num];
     if let PacketHeaders {
-        ip: Some(IpHeader::Version4(ip_header)),
+        net: Some(NetHeaders::Ipv4(ip_header, _ext)),
         transport: Some(TransportHeader::Udp(udp_header)),
         payload,
         ..
@@ -32,7 +28,7 @@ fn it_sents_packets() {
         assert_eq!(ip_header.destination, [10, 10, 10, 2]);
         assert_eq!(udp_header.source_port, 2424);
         assert_eq!(udp_header.destination_port, 4242);
-        assert_eq!(payload, data);
+        assert_eq!(payload.slice(), data);
     } else {
         panic!("incorrect packet");
     }
