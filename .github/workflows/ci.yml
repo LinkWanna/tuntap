@@ -13,7 +13,7 @@ jobs:
       - name: Build
         run: cargo build --all-targets
       - name: Test
-        run: cargo test
+        run: sudo env "PATH=$PATH" "HOME=$HOME" cargo test
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: Doc
