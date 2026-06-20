@@ -24,5 +24,6 @@ tokio = { version = "1", features = ["net", "rt", "rt-multi-thread", "io-util", 
 cc = "1"
 
 [dev-dependencies]
+version-sync = "0.9"
 etherparse = "0.17"
 serial_test = "3"
