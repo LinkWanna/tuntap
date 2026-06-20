@@ -5,9 +5,9 @@
 * Async API completely rewritten: `Stream + Sink` (tokio-core 0.1 / futures 0.1) replaced with
   `AsyncRead + AsyncWrite` (tokio 1.x / `AsyncFd`). The `Async` struct no longer implements
   `Stream` or `Sink`; use `AsyncReadExt` / `AsyncWriteExt` methods instead.
-* Feature renamed: `tokio` → `async`. Enable with `--features async` (on by default).
 * `set_recv_bufsize` removed from `Async`; external buffer sizing is now caller-managed
   via `AsyncRead`.
+* Rename module `r#async` to `aio` to avoid conflict with Rust 2024 edition's `async` keyword.
 
 ## Dependency Upgrades
 
@@ -16,15 +16,6 @@
 * `mio` 0.6 → removed (tokio's `AsyncFd` replaces raw mio)
 * `etherparse` 0.9 → 0.17 (dev-dependency)
 * `serial_test` 0.4 → 3.x (dev-dependency)
-* `version-sync` → removed
-
-## Code Modernization
-
-* Edition 2024 compliance: `extern "C"` → `unsafe extern "C"`, removed `extern crate` declarations
-* `build.rs`: removed `extern crate cc;`
-* `[badges]` section removed from `Cargo.toml` (deprecated by crates.io)
-* Travis CI replaced with GitHub Actions (`.github/workflows/ci.yml`)
-* `tests/version.rs` removed (depended on dropped `version-sync`)
 
 ## Upstream Fixes (since 0.1.4)
 
