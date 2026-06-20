@@ -5,8 +5,6 @@
 //!
 //! The `dump_iface` example is simpler (contains only the reading end), so you want to start with
 //! that.
-//!
-//! that.
 
 use std::process::Command;
 use std::sync::Arc;
@@ -55,7 +53,9 @@ fn main() {
             assert!(amount == PING.len());
         }
     });
-    thread::spawn(move || {
+
+    #[allow(unused_variables)]
+    let reader = thread::spawn(move || {
         // MTU + TUN header
         let mut buffer = vec![0; 1504];
         loop {
@@ -66,4 +66,5 @@ fn main() {
         }
     });
     writer.join().unwrap();
+    reader.join().unwrap();
 }
