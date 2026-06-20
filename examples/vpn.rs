@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UdpSocket;
-use tun_tap::r#async::Async;
+use tun_tap::aio::Async;
 use tun_tap::{Iface, Mode};
 
 #[tokio::main]

@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time;
-use tun_tap::r#async::Async;
+use tun_tap::aio::Async;
 use tun_tap::{Iface, Mode};
 
 /// The packet data. Note that it is prefixed by 4 bytes — two bytes are flags, another two are

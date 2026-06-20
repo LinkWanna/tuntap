@@ -6,7 +6,7 @@
 //!
 //! ```rust,no_run
 //! # use tun_tap::*;
-//! # use tun_tap::r#async::Async;
+//! # use tun_tap::aio::Async;
 //! # use tokio::io::AsyncReadExt;
 //! # #[tokio::main]
 //! # async fn main() {
@@ -52,7 +52,7 @@ impl Async {
     ///
     /// ```rust,no_run
     /// # use tun_tap::*;
-    /// # use tun_tap::r#async::Async;
+    /// # use tun_tap::aio::Async;
     /// # use tokio::io::AsyncReadExt;
     /// # #[tokio::main]
     /// # async fn main() {
