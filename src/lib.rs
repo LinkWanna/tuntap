@@ -33,7 +33,7 @@ use std::io::{Error, Read, Result, Write};
 use std::os::raw::{c_char, c_int};
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 
-#[cfg(feature = "async")]
+#[cfg(feature = "tokio")]
 pub mod r#async;
 
 unsafe extern "C" {

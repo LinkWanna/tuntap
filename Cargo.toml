@@ -12,8 +12,8 @@ categories = ["network-programming"]
 license = "Apache-2.0/MIT"
 
 [features]
-default = ["async"]
-async = ["dep:tokio", "dep:libc", "libc"]
+default = ["tokio"]
+tokio = ["dep:tokio", "dep:libc", "libc"]
 libc = ["dep:libc"]
 
 [dependencies]
