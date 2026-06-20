@@ -40,24 +40,29 @@ fn cmd(cmd: &str, args: &[&str]) {
 async fn main() {
     let iface = Iface::new("testtun%d", Mode::Tun).unwrap();
     eprintln!("Iface: {:?}", iface);
-    // Configure the "local" (kernel) endpoint. Kernel is (the host) 10.107.1.3, we (the app)
+    // Configure the „local“ (kernel) endpoint. Kernel is (the host) 10.107.1.3, we (the app)
     // pretend to be 10.107.1.2.
     cmd("ip", &["addr", "add", "dev", iface.name(), "10.107.1.3/24"]);
     cmd("ip", &["link", "set", "up", "dev", iface.name()]);
     let (mut reader, mut writer) = tokio::io::split(Async::new(iface).unwrap());
     let write_task = tokio::spawn(async move {
-        let mut interval = time::interval(Duration::from_secs(1));
-        loop {
-            interval.tick().await;
-            println!("Sending ping");
-            writer.write_all(PING).await.unwrap();
-        }
+        time::sleep(Duration::from_secs(1)).await;
+        println!("Sending ping");
+        writer.write_all(PING).await.unwrap();
     });
+
     let read_task = tokio::spawn(async move {
         let mut buf = vec![0u8; 1504];
         loop {
             let n = reader.read(&mut buf).await.unwrap();
-            println!("Received: {:?}", &buf[..n]);
+            // only catch `ping` from the writer, ignore other packets
+            // buf[2..4]: IPv4 protocol,
+            // buf[13]: the ICMP type (1 for echo request, 0 for echo reply)
+            // buf[24]: the ICMP code (0 for both echo request and reply)
+            if buf[2..4] == [8, 0] && buf[13] == 1 && buf[24] == 0 {
+                println!("Received: {:?}", &buf[..n]);
+                break;
+            }
         }
     });
     tokio::try_join!(write_task, read_task).unwrap();
