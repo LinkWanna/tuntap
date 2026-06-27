@@ -152,7 +152,6 @@ mod aio_tests {
         // Spawn a task that sends a packet into TUN via the async sender.
         let write_task = {
             let aio = aio.clone();
-            let data = data;
             tokio::spawn(async move {
                 let builder =
                     PacketBuilder::ipv4([10, 10, 10, 2], [10, 10, 10, 1], 20).udp(4245, 2427);
@@ -171,28 +170,43 @@ mod aio_tests {
         write_task.await.unwrap();
 
         // Now send a packet from the socket and read it via async recv.
+        // The TUN buffer may contain background kernel traffic (IGMP, MLDv2,
+        // LLMNR, etc.), so loop until we find our packet by port numbers.
         let read_data = [0xCD; 8];
         socket
             .send_to(&read_data, "10.10.10.2:4246")
             .expect("socket send failed");
 
         let mut read_buf = [0; 1500];
-        let n = aio.recv(&mut read_buf).await.expect("async recv failed");
-        let headers = PacketHeaders::from_ip_slice(&read_buf[..n]).expect("failed to parse");
-        if let PacketHeaders {
-            net: Some(NetHeaders::Ipv4(ip, _ext)),
-            transport: Some(TransportHeader::Udp(udp)),
-            payload,
-            ..
-        } = headers
-        {
-            assert_eq!(ip.source, [10, 10, 10, 1]);
-            assert_eq!(ip.destination, [10, 10, 10, 2]);
-            assert_eq!(udp.source_port, 2427);
-            assert_eq!(udp.destination_port, 4246);
-            assert_eq!(payload.slice(), read_data);
-        } else {
-            panic!("unexpected packet structure");
+        loop {
+            let n = aio.recv(&mut read_buf).await.expect("async recv failed");
+            let headers = PacketHeaders::from_ip_slice(&read_buf[..n]).expect("failed to parse");
+            let PacketHeaders {
+                net: Some(NetHeaders::Ipv4(_, _)),
+                transport: Some(TransportHeader::Udp(udp)),
+                ..
+            } = &headers
+            else {
+                continue; // skip IPv6, IGMP, etc.
+            };
+            if udp.source_port != 2427 || udp.destination_port != 4246 {
+                continue; // not our packet
+            }
+            // Found it — extract and assert.
+            if let PacketHeaders {
+                net: Some(NetHeaders::Ipv4(ip, _ext)),
+                transport: Some(TransportHeader::Udp(udp)),
+                payload,
+                ..
+            } = headers
+            {
+                assert_eq!(ip.source, [10, 10, 10, 1]);
+                assert_eq!(ip.destination, [10, 10, 10, 2]);
+                assert_eq!(udp.source_port, 2427);
+                assert_eq!(udp.destination_port, 4246);
+                assert_eq!(payload.slice(), read_data);
+            }
+            break;
         }
     }
 }
