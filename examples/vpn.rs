@@ -29,7 +29,6 @@ async fn main() -> io::Result<()> {
     let socket = Arc::new(UdpSocket::bind(loc_address).await?);
     let tun = Iface::new("vpn%d", Mode::Tun).unwrap();
     let tun = Arc::new(Async::new(tun).unwrap());
-    // let (mut tun_reader, mut tun_writer) = tokio::io::split(Async::new(tun).unwrap());
 
     // TUN → UDP (packets from kernel → remote peer)
     let tun_to_udp = {

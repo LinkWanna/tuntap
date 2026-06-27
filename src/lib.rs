@@ -11,8 +11,10 @@
 //! For basic usage, create an [`Iface`](struct.Iface.html) object and call the
 //! [`send`](struct.Iface.html#method.send) and [`recv`](struct.Iface.html#method.recv) methods.
 //!
-//! You can also use [`Async`](async/struct.Async.html) if you want to integrate with tokio event
-//! loop. This is configurable by a feature (it is on by default).
+//! You can also use [`aio::Async`] to integrate with tokio's async runtime,
+//! providing non-blocking [`recv`](aio/struct.Async.html#method.recv) /
+//! [`send`](aio/struct.Async.html#method.send) methods. This is configurable
+//! by a feature (it is on by default).
 //!
 //! Creating the devices requires `CAP_NETADM` privileges (most commonly done by running as root).
 //!
@@ -21,7 +23,7 @@
 //! * It is tested only on Linux and probably doesn't work anywhere else, even though other systems
 //!   have some TUN/TAP support. Reports that it works (or not) and pull request to add other
 //!   system's support are welcome.
-//! * The [`Async`](async/struct.Async.html) interface is very minimal and will require extention
+//! * The [`aio::Async`] interface is very minimal and will require extension
 //!   for further use cases and better performance.
 //! * This doesn't support advanced usage patters, like reusing already created device or creating
 //!   persistent devices. Again, pull requests are welcome.

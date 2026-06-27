@@ -2,9 +2,8 @@
 
 ## Breaking Changes
 
-* Async API completely rewritten: `Stream + Sink` (tokio-core 0.1 / futures 0.1) replaced with
-  `AsyncRead + AsyncWrite` (tokio 1.x / `AsyncFd`). The `Async` struct no longer implements
-  `Stream` or `Sink`; use `AsyncReadExt` / `AsyncWriteExt` methods instead.
+* Async API completely rewritten: The `Async` struct no longer implements
+  `Stream` or `Sink`. It simply provides async version `recv` and `send` methods for reading/writing packets.
 * `set_recv_bufsize` removed from `Async`; external buffer sizing is now caller-managed
   via `AsyncRead`.
 * Rename module `r#async` to `aio` to avoid conflict with Rust 2024 edition's `async` keyword.
@@ -12,7 +11,7 @@
 ## Dependency Upgrades
 
 * `tokio-core` 0.1 → `tokio` 1.x (features: net, rt, rt-multi-thread, io-util, macros, time)
-* `futures` 0.1 → removed (tokio provides async traits)
+* `futures` 0.1 → removed
 * `mio` 0.6 → removed (tokio's `AsyncFd` replaces raw mio)
 * `etherparse` 0.9 → 0.17 (dev-dependency)
 * `serial_test` 0.4 → 3.x (dev-dependency)
