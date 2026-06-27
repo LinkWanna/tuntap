@@ -9,9 +9,9 @@
 //! You really do want better error handling than all these unwraps.
 
 use std::process::Command;
+use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time;
 use tun_tap::aio::Async;
 use tun_tap::{Iface, Mode};
@@ -44,26 +44,31 @@ async fn main() {
     // pretend to be 10.107.1.2.
     cmd("ip", &["addr", "add", "dev", iface.name(), "10.107.1.3/24"]);
     cmd("ip", &["link", "set", "up", "dev", iface.name()]);
-    let (mut reader, mut writer) = tokio::io::split(Async::new(iface).unwrap());
-    let write_task = tokio::spawn(async move {
-        time::sleep(Duration::from_secs(1)).await;
-        println!("Sending ping");
-        writer.write_all(PING).await.unwrap();
-    });
-
-    let read_task = tokio::spawn(async move {
-        let mut buf = vec![0u8; 1504];
-        loop {
-            let n = reader.read(&mut buf).await.unwrap();
-            // only catch `ping` from the writer, ignore other packets
-            // buf[2..4]: IPv4 protocol,
-            // buf[13]: the ICMP type (1 for echo request, 0 for echo reply)
-            // buf[24]: the ICMP code (0 for both echo request and reply)
-            if buf[2..4] == [8, 0] && buf[13] == 1 && buf[24] == 0 {
-                println!("Received: {:?}", &buf[..n]);
-                break;
+    let iface = Arc::new(Async::new(iface).unwrap());
+    let write_task = {
+        let iface = iface.clone();
+        tokio::spawn(async move {
+            time::sleep(Duration::from_secs(1)).await;
+            println!("Sending ping");
+            iface.send(PING).await.unwrap();
+        })
+    };
+    let read_task = {
+        let iface = iface.clone();
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 1504];
+            loop {
+                let n = iface.recv(&mut buf).await.unwrap();
+                // only catch `ping` from the writer, ignore other packets
+                // buf[2..4]: IPv4 protocol,
+                // buf[13]: the ICMP type (1 for echo request, 0 for echo reply)
+                // buf[24]: the ICMP code (0 for both echo request and reply)
+                if buf[2..4] == [8, 0] && buf[13] == 1 && buf[24] == 0 {
+                    println!("Received: {:?}", &buf[..n]);
+                    break;
+                }
             }
-        }
-    });
+        })
+    };
     tokio::try_join!(write_task, read_task).unwrap();
 }

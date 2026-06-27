@@ -1,40 +1,27 @@
 //! Integration of TUN/TAP into tokio.
 //!
-//! See the [`Async`](struct.Async.html) structure.
-//!
-//! # Examples
-//!
-//! ```rust,no_run
-//! # use tun_tap::*;
-//! # use tun_tap::aio::Async;
-//! # use tokio::io::AsyncReadExt;
-//! # #[tokio::main]
-//! # async fn main() {
-//! let iface = Iface::new("mytun%d", Mode::Tun).unwrap();
-//! let mut async_iface = Async::new(iface).unwrap();
-//! let mut buf = vec![0u8; 1504];
-//! let n = async_iface.read(&mut buf).await.unwrap();
-//! # }
-//! ```
+//! Wraps an [`Iface`] in tokio's [`AsyncFd`] to provide
+//! async versions of [`Iface::recv`] and [`Iface::send`].  The underlying
+//! fd is automatically set to non-blocking mode so that the kernel
+//! returns `EWOULDBLOCK` instead of blocking the reactor thread.
 
 use std::io;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 use tokio::io::unix::AsyncFd;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::Iface;
 
-/// A wrapper around [`Iface`](../struct.Iface.html) for use with tokio.
+/// An asynchronous wrapper around a TUN/TAP [`Iface`].
 ///
-/// This turns the synchronous `Iface` into an asynchronous reader/writer.
-/// Implements [`AsyncRead`] and [`AsyncWrite`], so it can be used with
-/// standard tokio utilities like `AsyncReadExt::read` or `copy_bidirectional`.
+/// Integrates the raw file descriptor with tokio's I/O reactor so that
+/// [`recv`](Async::recv) / [`send`](Async::send) can be `.await`ed
+/// cooperatively without blocking the runtime.
 ///
-/// Equivalent to the old `Stream + Sink` API — just use `read` and `write`
-/// directly via [`AsyncReadExt`](tokio::io::AsyncReadExt) /
-/// [`AsyncWriteExt`](tokio::io::AsyncWriteExt).
+/// The TUN device is **message-oriented** (datagram semantics) —
+/// every read/write corresponds to exactly one network packet.
+/// Do **not** use `write_all` or byte-stream abstractions; a single
+/// `write` that is shorter than the caller intended injects a truncated
+/// (garbage) packet into the kernel.
 pub struct Async {
     inner: AsyncFd<Iface>,
 }
@@ -47,88 +34,54 @@ impl Async {
     /// # Errors
     ///
     /// This fails with an error in case of low-level OS errors.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// # use tun_tap::*;
-    /// # use tun_tap::aio::Async;
-    /// # use tokio::io::AsyncReadExt;
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let iface = Iface::new("mytun%d", Mode::Tun).unwrap();
-    /// let name = iface.name().to_owned();
-    /// // Bring the interface up by `ip addr add IP dev $name; ip link set up dev $name`
-    /// let mut async_iface = Async::new(iface).unwrap();
-    /// let mut buf = vec![0u8; 1504];
-    /// let n = async_iface.read(&mut buf).await.unwrap();
-    /// # }
-    /// ```
     pub fn new(iface: Iface) -> io::Result<Self> {
         iface.set_non_blocking()?;
         Ok(Async {
             inner: AsyncFd::new(iface)?,
         })
     }
-
-    /// Returns a shared reference to the underlying [`Iface`].
-    pub fn get_ref(&self) -> &Iface {
-        self.inner.get_ref()
-    }
-
-    /// Returns a mutable reference to the underlying [`Iface`].
-    pub fn get_mut(&mut self) -> &mut Iface {
-        self.inner.get_mut()
-    }
-
-    /// Consumes this `Async` and returns the underlying [`Iface`].
-    pub fn into_inner(self) -> Iface {
-        self.inner.into_inner()
-    }
 }
 
-impl AsyncRead for Async {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
+impl Async {
+    /// Receives a single packet from the interface asynchronously.
+    ///
+    /// Awaits readability on the underlying fd, then calls
+    /// [`Iface::recv`] to copy one packet into `buf`.
+    ///
+    /// The buffer must be large enough to hold one full packet
+    /// (MTU + 4-byte packet-info header if enabled).  If it is
+    /// too small the packet is truncated by the kernel.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes written into `buf`.
+    pub async fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
-            let mut guard = std::task::ready!(self.inner.poll_read_ready(cx))?;
-            let unfilled = buf.initialize_unfilled();
-            match guard.try_io(|inner| inner.get_ref().recv(unfilled)) {
-                Ok(Ok(n)) => {
-                    buf.advance(n);
-                    return Poll::Ready(Ok(()));
-                }
-                Ok(Err(e)) if e.kind() == io::ErrorKind::WouldBlock => continue,
-                Ok(Err(e)) => return Poll::Ready(Err(e)),
-                Err(_would_block) => continue,
-            }
-        }
-    }
-}
-
-impl AsyncWrite for Async {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        loop {
-            let mut guard = std::task::ready!(self.inner.poll_write_ready(cx))?;
-            match guard.try_io(|inner| inner.get_ref().send(buf)) {
-                Ok(result) => return Poll::Ready(result),
+            let mut guard = self.inner.readable().await?;
+            match guard.try_io(|inner| inner.get_ref().recv(buf)) {
+                Ok(result) => return result,
                 Err(_would_block) => continue,
             }
         }
     }
 
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
+    /// Sends a single packet into the interface asynchronously.
+    ///
+    /// Awaits writability on the underlying fd, then calls
+    /// [`Iface::send`] to inject the packet into the kernel
+    /// network stack.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes sent (should equal `data.len()` under
+    /// normal conditions).
+    pub async fn send(&self, data: &[u8]) -> io::Result<usize> {
+        loop {
+            let mut guard = self.inner.writable().await?;
+            match guard.try_io(|inner| inner.get_ref().send(data)) {
+                Ok(result) => return result,
+                Err(_would_block) => continue,
+            }
+        }
     }
 }

@@ -17,7 +17,6 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UdpSocket;
 use tun_tap::aio::Async;
 use tun_tap::{Iface, Mode};
@@ -29,15 +28,17 @@ async fn main() -> io::Result<()> {
 
     let socket = Arc::new(UdpSocket::bind(loc_address).await?);
     let tun = Iface::new("vpn%d", Mode::Tun).unwrap();
-    let (mut tun_reader, mut tun_writer) = tokio::io::split(Async::new(tun).unwrap());
+    let tun = Arc::new(Async::new(tun).unwrap());
+    // let (mut tun_reader, mut tun_writer) = tokio::io::split(Async::new(tun).unwrap());
 
     // TUN → UDP (packets from kernel → remote peer)
     let tun_to_udp = {
-        let socket = Arc::clone(&socket);
+        let socket = socket.clone();
+        let tun = tun.clone();
         tokio::spawn(async move {
             let mut buf = vec![0u8; 1504];
             loop {
-                let n = tun_reader.read(&mut buf).await?;
+                let n = tun.recv(&mut buf).await?;
                 socket.send_to(&buf[..n], rem_address).await?;
             }
             #[allow(unreachable_code)]
@@ -47,11 +48,12 @@ async fn main() -> io::Result<()> {
 
     // UDP → TUN (packets from remote peer → kernel)
     let udp_to_tun = {
+        let tun = tun.clone();
         tokio::spawn(async move {
             let mut buf = vec![0u8; 1504];
             loop {
                 let (n, _src) = socket.recv_from(&mut buf).await?;
-                tun_writer.write_all(&buf[..n]).await?;
+                tun.send(&buf[..n]).await?;
             }
             #[allow(unreachable_code)]
             Ok::<_, io::Error>(())
